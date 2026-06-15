@@ -7,10 +7,23 @@
 > date, see [SECURITY.md](./SECURITY.md) to check and remediate.
 
 > [!CAUTION]
-> This project is developed and maintained using **Agentic Engineering** — with
-> the assistance of **Claude Opus 4.6** by Anthropic. Code, architecture
-> decisions, and documentation in this repository are largely produced through
-> AI-assisted development workflows.
+> **v0.6.0 — Breaking changes:** This release replaces the entire Next.js /
+> React stack with **SvelteKit + Svelte 5** and moves the runtime to **Deno 2**.
+> Features and all 9 AI provider integrations are unchanged — only the
+> toolchain and project structure differ.
+>
+> **If you are upgrading from v0.5.x or earlier:**
+>
+> 1. Install [Deno 2.x](https://deno.com/) — Node.js and npm are no longer
+>    required.
+> 2. Pull the latest code and run `deno install` (replaces `npm install`).
+> 3. Keep your existing `.env.local` (dev) or `.env` (production) — environment
+>    variable names are unchanged.
+> 4. Use `deno task dev`, `deno task build`, and `deno task start` instead of
+>    npm scripts.
+> 5. For Docker deployments, rebuild your images (`docker compose up --build`).
+>
+> See the [Changelog](./CHANGELOG.md) for the full migration details.
 
 A modern web application that uses AI to generate HTML, CSS, and JavaScript code
 based on natural language prompts. Simply describe what you want to build, and
