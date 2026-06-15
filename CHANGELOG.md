@@ -1,45 +1,205 @@
 # Changelog
 
+## [0.6.0] - 2026-06-15
+
+### ⚠ Breaking — Complete Framework Rewrite
+
+This release replaces the entire Next.js / React stack with **SvelteKit + Svelte
+5** and moves the runtime and toolchain to **Deno 2**. The application's
+behaviour, feature set, and all 9 AI provider integrations are preserved
+exactly. Only the implementation technology changes.
+
+#### Why Svelte instead of React?
+
+- **No virtual DOM.** Svelte compiles components to direct DOM instructions at
+  build time. The app's hot path — streaming NDJSON into a live preview while
+  updating a Monaco editor — involves thousands of incremental state mutations
+  per generation. Svelte's compiled output handles this with far less runtime
+  overhead than React's reconciler.
+- **Runes replace hooks.** Svelte 5's `$state` / `$derived` / `$effect` runes
+  are fine-grained reactive primitives — no dependency arrays, no stale-closure
+  bugs, no `useCallback`/`useMemo` boilerplate. The entire generation state
+  module (`useCodeGeneration`) became a single class with reactive fields.
+- **Smaller output.** The Svelte runtime is ~10 KB. React 19 + ReactDOM is ~130
+  KB before any application code. For a tool that should feel instant, that gap
+  matters.
+- **No "use client" / "use server" boundary friction.** SvelteKit's file
+  conventions (`+server.ts`, `$lib/server/`) express the same server/client
+  split more clearly and with fewer footguns than Next.js App Router.
+- **Shadcn/Radix replaced by hand-rolled primitives.** The original project used
+  ~50 Radix/Shadcn components but only a dozen in practice. The new UI layer is
+  ~300 lines of Svelte with zero external component library dependencies, making
+  the dependency tree significantly smaller and auditable.
+
+#### Why Deno instead of Node/npm?
+
+- **Security by default.** Deno requires explicit permission flags
+  (`--allow-net`, `--allow-read`, etc.) and does **not** run npm lifecycle
+  scripts unless explicitly opted in. This directly mitigated the
+  `ai-sdk-ollama@2.2.1` supply-chain worm discovered during this migration (see
+  SECURITY.md).
+- **No npm needed.** `deno install` reads `package.json` and resolves the
+  dependency tree without requiring a separate runtime install. One tool for
+  everything.
+- **Built-in formatter and linter.** `deno fmt` and `deno lint` replace ESLint +
+  Prettier with zero config, keeping the toolchain surface small.
+- **First-class TypeScript.** Deno runs TypeScript natively; no `ts-node`,
+  `tsx`, or transpile-before-run dance.
+- **`deno.json` tasks.** `deno task dev/build/check` replace npm scripts with
+  reproducible, self-documenting commands.
+
+### Changes
+
+#### Runtime and toolchain
+
+- **Deno 2** replaces Node.js / npm as the runtime and package manager.
+- `deno.json` added with `dev`, `build`, `start`, `preview`, and `check` tasks.
+- `nodeModulesDir: "auto"` in `deno.json` enables a real `node_modules` tree so
+  Vite and SvelteKit work without modification.
+- `package.json` retained for dependency declarations; `deno install` manages
+  it.
+- `deno.lock` committed for reproducible installs.
+- Dockerfile rebuilt on the official `denoland/deno:2.8.3` image; production
+  server started with `deno run -A build/index.js`.
+
+#### Framework
+
+- **Next.js 15 → SvelteKit 2** (Svelte 5, adapter-node).
+- `app/` directory and all `*.tsx` files removed.
+- `components/` and `lib/` (Next.js / React versions) removed.
+- `src/routes/` replaces `app/` for pages and API endpoints.
+- `src/lib/` replaces `@/*` path alias.
+- `export const ssr = false` in `+layout.ts` — app renders client-side (Monaco,
+  sessionStorage, streaming fetch require browser APIs).
+
+#### API routes
+
+- `app/api/generate-code/route.ts` → `src/routes/api/generate-code/+server.ts`
+- `app/api/get-models/route.ts` → `src/routes/api/get-models/+server.ts`
+- `app/api/get-default-provider/route.ts` →
+  `src/routes/api/get-default-provider/+server.ts`
+- All three preserved exactly — same request/response contract, same NDJSON
+  streaming format.
+
+#### Provider system
+
+- `lib/providers/` → `src/lib/server/providers/` (SvelteKit server-only
+  boundary).
+- `process.env` replaced with `$env/dynamic/private` — secrets are guaranteed
+  never to reach the client bundle.
+
+#### State management
+
+- `hooks/use-code-generation.ts` (React hook) →
+  `src/lib/state/code-generation.svelte.ts` (Svelte 5 rune class).
+- All `useState` / `useEffect` patterns replaced with `$state` / `$effect`.
+
+#### Components
+
+| Old (React/Next.js)                 | New (Svelte 5)                                                |
+| ----------------------------------- | ------------------------------------------------------------- |
+| `components/loading-screen.tsx`     | `src/lib/components/LoadingScreen.svelte`                     |
+| `components/welcome-view.tsx`       | `src/lib/components/WelcomeView.svelte`                       |
+| `components/provider-selector.tsx`  | `src/lib/components/ProviderSelector.svelte`                  |
+| `components/generation-view.tsx`    | `src/lib/components/GenerationView.svelte`                    |
+| `components/generation-panels.tsx`  | `src/lib/components/CodePanel.svelte` + `PreviewPanel.svelte` |
+| `components/code-editor.tsx`        | `src/lib/components/CodeEditor.svelte`                        |
+| `components/thinking-indicator.tsx` | `src/lib/components/ThinkingIndicator.svelte`                 |
+| `components/work-steps.tsx`         | `src/lib/components/WorkSteps.svelte`                         |
+| `components/ui/` (~50 Radix/Shadcn) | `src/lib/components/ui/` (8 hand-rolled)                      |
+
+#### Dependencies replaced
+
+| Removed                                                                                   | Replaced by                                                  |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `next`, `react`, `react-dom`                                                              | `@sveltejs/kit`, `svelte`, `vite`                            |
+| `@monaco-editor/react`                                                                    | `monaco-editor` (direct, via `onMount`)                      |
+| `react-resizable-panels`                                                                  | `paneforge`                                                  |
+| `sonner`                                                                                  | `svelte-sonner`                                              |
+| `lodash.debounce`                                                                         | inline debounce (5 lines)                                    |
+| `next-themes`                                                                             | `class="dark"` on `<html>` in `app.html`                     |
+| `lucide-react`                                                                            | `@lucide/svelte` (also fixes the deprecated `lucide-svelte`) |
+| All `@radix-ui/*`, `cmdk`, `class-variance-authority`, `react-hook-form`, `zod` (UI only) | removed entirely                                             |
+
+#### Assets
+
+- `public/` → `static/` (SvelteKit convention).
+- `app/globals.css` → `src/app.css`.
+- Global animations (`glitch`, `typing`, `pulse-slow`) moved from `styled-jsx`
+  blocks into `src/app.css`.
+- `next.config.mjs`, `components.json`, `vercel.json` removed.
+- `postcss.config.mjs` → `postcss.config.js`.
+- Custom `favicon.svg` added.
+
+### Security
+
+- **`ai-sdk-ollama@2.2.1` supply-chain worm mitigated.** The previous `^2.2.0`
+  range could resolve to the compromised `2.2.1` build (published 2026-06-04).
+  The dependency is now pinned to `2.2.0` via both `dependencies` and an npm
+  `overrides` entry. `SECURITY.md` added with full advisory and remediation
+  instructions.
+- **`lucide-svelte` deprecated.** Migrated to the maintained `@lucide/svelte`
+  package.
+
+---
+
 ## [0.5.2] - 2026-03-16
 
 ### Performance
 
-- **Monaco Editor lazy-loading** — `@monaco-editor/react` is now loaded via `next/dynamic` instead of a static import, removing ~2 MB from the initial JS bundle and unblocking page interactivity on first load.
-- **Streaming optimizations** — Replaced O(n²) string concatenation (`buffer += chunk`) with array-based accumulation (`chunks.push()` + `join()`). State updates (`setGeneratedCode`, `setThinkingOutput`) are now batched once per `reader.read()` call instead of on every NDJSON line, reducing unnecessary re-renders during generation. Also reused a single `TextDecoder` instance per stream.
-- **Preview debounce increased** — Debounce delay for live preview updates raised from 50 ms to 200 ms, significantly reducing re-render frequency during fast streaming. `prepareHtmlContent` and its `darkModeStyle` constant moved to module scope so they are no longer recreated on every render.
-- **WorkSteps refactored to `useMemo`** — Replaced the `useState` + `useEffect` pattern with a single `useMemo`, eliminating one extra render cycle per code update. Step definitions extracted to a module-level constant.
-- **Model list cached in `sessionStorage`** — Provider model lists are now cached after the first fetch. Switching back to a previously loaded provider skips the network request entirely.
-- **Mobile tab switching uses CSS visibility** — `CodePanel` and `PreviewPanel` are now always mounted in mobile view and toggled via `flex`/`hidden` classes instead of being conditionally rendered. This prevents Monaco Editor from re-initializing on every tab switch.
-- **Replaced full `lodash` with `lodash.debounce`** — Dropped the 71 KB `lodash` package in favour of the single-function `lodash.debounce`, saving ~54 KB from the client bundle.
-- **Tailwind content paths narrowed** — Removed the broad `*.{js,ts,jsx,tsx,mdx}` root glob from `tailwind.config.ts`; only actual source directories are scanned now, speeding up CSS builds.
+- **Monaco Editor lazy-loading** — Loaded via dynamic import instead of a static
+  import, removing ~2 MB from the initial JS bundle.
+- **Streaming optimizations** — Replaced O(n²) string concatenation with
+  array-based accumulation. State updates batched once per `reader.read()` call.
+  Single `TextDecoder` instance reused per stream.
+- **Preview debounce increased** — Raised from 50 ms to 200 ms, reducing
+  re-render frequency during fast streaming.
+- **WorkSteps refactored to `useMemo`** — Eliminated one extra render cycle per
+  code update.
+- **Model list cached in `sessionStorage`** — Switching back to a previously
+  loaded provider skips the network request entirely.
+- **Mobile tab switching uses CSS visibility** — Prevents Monaco from
+  re-initializing on every tab switch.
+- **Replaced full `lodash` with `lodash.debounce`** — Saved ~54 KB from the
+  client bundle.
+- **Tailwind content paths narrowed** — Only actual source directories scanned,
+  speeding up CSS builds.
 
 ### Fixes
 
-- **OpenRouter model selector lag** — With 300+ models, every keystroke in the prompt textarea caused a full reconciliation of all `SelectItem` DOM nodes. The model selector is now a `React.memo` component (`ModelSelector`) with its own isolated state, preventing re-renders when unrelated parent state (e.g. `prompt`) changes.
-- **Model selector rebuilt as Combobox** — Replaced the Radix `Select` with a `Popover` + `cmdk` `Command` (the standard Shadcn combobox pattern). This fixes two UI bugs that occurred with the previous inline search input:
-  - The search bar no longer scrolls away — `CommandInput` is structurally outside the scrollable `CommandList`.
-  - Focus is no longer lost while typing — Radix Select was intercepting keyboard events; `cmdk` manages focus correctly.
-  - Search automatically appears when a provider returns more than 10 models and filters by both model name and ID.
-- **Model selector hover / color regression** — Corrected `hover:bg-accent` on the trigger button resolving to pure white (`--accent: 0 0% 100%`), which made the button text invisible on hover. Hover styles now keep the button visually identical to its resting state. Fixed `Command` background using the CSS variable `--popover` (near-black) instead of the intended `bg-gray-900`.
+- **OpenRouter model selector lag** — Model selector is now a memoised
+  component, preventing re-renders when unrelated parent state (e.g. `prompt`)
+  changes.
+- **Model selector rebuilt as Combobox** — Replaced Radix `Select` with a
+  Popover + cmdk Command, fixing search-bar scroll-away and focus-loss bugs.
+- **Model selector hover / color regression** — Corrected `hover:bg-accent`
+  resolving to pure white.
 
 ## [0.5.1] - 2026-01-05
 
 ### Fixes
-- **Fixed Ollama provider crash** - Replaced `ollama-ai-provider` with `ai-sdk-ollama@^2.2.0` for AI SDK v5 compatibility
+
+- **Fixed Ollama provider crash** — Replaced `ollama-ai-provider` with
+  `ai-sdk-ollama@^2.2.0` for AI SDK v5 compatibility.
 
 ## [0.5.0] - 2025-12-22
 
 ### Major Changes
 
 #### Vercel AI SDK Migration
+
 - **Migrated from `openai` SDK to Vercel AI SDK** (`ai` package)
 - Using official SDK packages for all providers:
-  - `@ai-sdk/deepseek`, `@ai-sdk/anthropic`, `@ai-sdk/google`, `@ai-sdk/mistral`, `@ai-sdk/cerebras`
-  - `@openrouter/ai-sdk-provider`, `ollama-ai-provider`, `@ai-sdk/openai-compatible`
+  - `@ai-sdk/deepseek`, `@ai-sdk/anthropic`, `@ai-sdk/google`,
+    `@ai-sdk/mistral`, `@ai-sdk/cerebras`
+  - `@openrouter/ai-sdk-provider`, `ollama-ai-provider`,
+    `@ai-sdk/openai-compatible`
 - Unified streaming via `streamText()` and `fullStream` API
 
 #### Universal Reasoning Support
-- **Native reasoning models** now fully supported (e.g., `deepseek-reasoner`, `o1`)
+
+- **Native reasoning models** now fully supported (e.g., `deepseek-reasoner`,
+  `o1`)
   - SDK automatically extracts `reasoning_content` from API responses
   - Reasoning streamed as `reasoning-delta` chunks
 - **Tag-based reasoning fallback** for models using `<think>` tags
@@ -48,34 +208,43 @@
 - Frontend parses unified stream format for both reasoning methods
 
 ### Refactor
+
 - `lib/providers/provider.ts`: Complete rewrite using official SDK providers
-- `app/api/generate-code/route.ts`: Custom `fullStream` handler for text + reasoning
-- `hooks/use-code-generation.ts`: NDJSON parsing replaces manual `<think>` tag extraction
+- `app/api/generate-code/route.ts`: Custom `fullStream` handler for text +
+  reasoning
+- `hooks/use-code-generation.ts`: NDJSON parsing replaces manual `<think>` tag
+  extraction
 - OpenRouter `getModels()` now fetches all available models from API (400+)
 
 ### New Features
+
 - **OpenRouter as dedicated provider** with own API key (`OPENROUTER_API_KEY`)
 - **4 new official providers**: Anthropic, Google AI (Gemini), Mistral, Cerebras
 - **`DISABLED_PROVIDERS` env var** to disable providers via comma-separated list
 
 ### Notes
+
 - Provider packages still return `LanguageModelV1` (v4 API) while main SDK is v5
 - Type casts can be removed when provider packages release v5-compatible updates
-
-
 
 ## [0.4.0] - 2025-12-15
 
 ### Refactor
+
 - Centralized generation logic into custom `useCodeGeneration` hook.
-- Modularized `GenerationView` into reusable components for cleaner architecture.
+- Modularised `GenerationView` into reusable components for cleaner
+  architecture.
 
 ### Security
+
 - Updated Next.js to patch critical vulnerabilities (including React2Shell).
 
 ### Fixes
-- Improved Ollama stream parsing (added buffering) to prevent crashes on split JSON chunks.
+
+- Improved Ollama stream parsing (added buffering) to prevent crashes on split
+  JSON chunks.
 
 ### Chore
+
 - Centralized system prompt management in the backend.
 - Removed unused Shadcn UI components and dependencies.

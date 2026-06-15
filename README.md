@@ -1,35 +1,48 @@
 > **What's new?** See the [Changelog](./CHANGELOG.md) for details.
 
-> [!CAUTION]
-> This project is developed and maintained using **Agentic Engineering** — with the assistance of **Claude Opus 4.6** by Anthropic. Code, architecture decisions, and documentation in this repository are largely produced through AI-assisted development workflows.
+> [!IMPORTANT]
+> **Security:** A compromised build of `ai-sdk-ollama@2.2.1` (supply-chain worm,
+> 2026-06-04) could be pulled by the old `^2.2.0` range. The dependency is now
+> pinned to the safe `2.2.0`. If you installed this project on or after that
+> date, see [SECURITY.md](./SECURITY.md) to check and remediate.
 
-A modern web application that uses AI to generate HTML, CSS, and JavaScript code based on natural language prompts. Simply describe what you want to build, and the AI will create a complete, self-contained web page for you.
+> [!CAUTION]
+> This project is developed and maintained using **Agentic Engineering** — with
+> the assistance of **Claude Opus 4.6** by Anthropic. Code, architecture
+> decisions, and documentation in this repository are largely produced through
+> AI-assisted development workflows.
+
+A modern web application that uses AI to generate HTML, CSS, and JavaScript code
+based on natural language prompts. Simply describe what you want to build, and
+the AI will create a complete, self-contained web page for you.
 
 ## Features
 
-- **AI-Powered Code Generation**: Generate complete web pages from text descriptions
-- **Live Preview**: See your generated code in action with desktop, tablet, and mobile views
+- **AI-Powered Code Generation**: Generate complete web pages from text
+  descriptions
+- **Live Preview**: See your generated code in action with desktop, tablet, and
+  mobile views
 - **Code Editing**: Edit the generated code directly in the browser
-- **Multiple AI Providers**: Support for DeepSeek, custom OpenAI-compatible APIs, and local models
+- **Multiple AI Providers**: Support for DeepSeek, custom OpenAI-compatible
+  APIs, and local models
 - **Responsive Design**: Works on desktop and mobile devices
 - **Modern UI**: Clean, dark-themed interface with a focus on usability
 
 ## Tech Stack
 
-- [Next.js 15](https://nextjs.org/) with App Router
-- [React 19](https://react.dev/)
+- [SvelteKit](https://svelte.dev/docs/kit) (Svelte 5 with runes)
+- [Deno](https://deno.com/) runtime and toolchain
 - [Tailwind CSS](https://tailwindcss.com/)
-- [Shadcn UI](https://ui.shadcn.com/)
-- [OpenAI SDK](https://github.com/openai/openai-node) (for API compatibility)
+- [Vercel AI SDK](https://sdk.vercel.ai/) (provider streaming)
 - [Monaco Editor](https://microsoft.github.io/monaco-editor/)
 
 ## Getting Started
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (version 18.17 or higher)
-- [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/)
-- [Ollama](https://ollama.com/download/) or [LM Studio](https://lmstudio.ai/) installed 
+- [Deno](https://deno.com/) (version 2.x or higher)
+- [Ollama](https://ollama.com/download/) or [LM Studio](https://lmstudio.ai/)
+  installed
 - OR an API key from one of the supported providers (see below)
 
 ### Installation
@@ -42,12 +55,11 @@ A modern web application that uses AI to generate HTML, CSS, and JavaScript code
 
 2. Install the dependencies:
    ```bash
-   npm install
-   # or
-   yarn install
+   deno install
    ```
 
-3. Rename the `.env.example` file in the root directory to `.env.local` and add your API key:
+3. Rename the `.env.example` file in the root directory to `.env.local` and add
+   your API key:
    ```
    # Choose one of the following providers:
 
@@ -65,12 +77,10 @@ A modern web application that uses AI to generate HTML, CSS, and JavaScript code
 
 4. Start the development server:
    ```bash
-   npm run dev
-   # or
-   yarn dev
+   deno task dev
    ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser.
+5. Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Supported AI Providers
 
@@ -96,11 +106,13 @@ A modern web application that uses AI to generate HTML, CSS, and JavaScript code
    LM_STUDIO_API_BASE=http://localhost:1234/v1
    DEFAULT_PROVIDER=lm_studio
    ```
+
 ### Cloud Models
 
 #### Cerebras (Create a Website in 3 seconds!)
 
-1. Visit [Cerebras](https://cloud.cerebras.ai/) and create an account or sign in.
+1. Visit [Cerebras](https://cloud.cerebras.ai/) and create an account or sign
+   in.
 2. Navigate to the API keys section.
 3. Create a new API key and copy it.
 4. Set in your `.env.local` file:
@@ -110,16 +122,19 @@ A modern web application that uses AI to generate HTML, CSS, and JavaScript code
 
 #### Google Gemini
 
-1. Visit [Google AI Studio](https://aistudio.google.com) and create an account or sign in.
+1. Visit [Google AI Studio](https://aistudio.google.com) and create an account
+   or sign in.
 2. Navigate to the API keys section.
 3. Create a new API key and copy it.
 4. Set in your `.env.local` file:
    ```
    GOOGLE_GENERATIVE_AI_API_KEY=your_google_api_key
    ```
+
 #### Anthropic Claude
 
-1. Visit [Anthropic](https://console.anthropic.com) and create an account or sign in.
+1. Visit [Anthropic](https://console.anthropic.com) and create an account or
+   sign in.
 2. Navigate to the API keys section.
 3. Create a new API key and copy it.
 4. Set in your `.env.local` file:
@@ -129,7 +144,8 @@ A modern web application that uses AI to generate HTML, CSS, and JavaScript code
 
 ### DeepSeek
 
-1. Visit [DeepSeek](https://platform.deepseek.com) and create an account or sign in.
+1. Visit [DeepSeek](https://platform.deepseek.com) and create an account or sign
+   in.
 2. Navigate to the API keys section.
 3. Create a new API key and copy it.
 4. Set in your `.env.local` file:
@@ -150,7 +166,8 @@ A modern web application that uses AI to generate HTML, CSS, and JavaScript code
 
 #### Mistral
 
-1. Visit [Mistral AI Studio](https://console.mistral.ai/) and create an account or sign in.
+1. Visit [Mistral AI Studio](https://console.mistral.ai/) and create an account
+   or sign in.
 2. Navigate to the API keys section.
 3. Create a new API key and copy it.
 4. Set in your `.env.local` file:
@@ -162,16 +179,22 @@ A modern web application that uses AI to generate HTML, CSS, and JavaScript code
 
 You can use any OpenAI-compatible API:
 
-1. Obtain an API key from your desired provider (OpenAI, Together AI, Groq, etc.).
+1. Obtain an API key from your desired provider (OpenAI, Together AI, Groq,
+   etc.).
 2. Set in your `.env.local` file:
    ```
    OPENAI_COMPATIBLE_API_KEY=your_api_key
    OPENAI_COMPATIBLE_API_BASE=https://api.of.provider.com/v1
    ```
 
-If your OpenAI-compatible provider does not support listing available models (some third-party or self-hosted providers), you can explicitly set a single model ID to use with the `OPENAI_COMPATIBLE_MODEL` environment variable. When set, the app will return this model instead of attempting to call the provider's models.list endpoint.
+If your OpenAI-compatible provider does not support listing available models
+(some third-party or self-hosted providers), you can explicitly set a single
+model ID to use with the `OPENAI_COMPATIBLE_MODEL` environment variable. When
+set, the app will return this model instead of attempting to call the provider's
+models.list endpoint.
 
 Example `.env.local`:
+
 ```
 OPENAI_COMPATIBLE_API_KEY=your_api_key
 OPENAI_COMPATIBLE_API_BASE=https://api.of.provider.com/v1
@@ -180,26 +203,34 @@ OPENAI_COMPATIBLE_MODEL=gpt-4o-mini
 
 ## Deployment
 
-### Deploying on Vercel
+This is a SvelteKit app built with `@sveltejs/adapter-node`. `deno task build`
+produces a standalone server in `build/`, which you run with:
 
-[Vercel](https://vercel.com) is the recommended platform for hosting your Next.js application:
+```bash
+deno task build
+deno run -A build/index.js   # listens on port 3000 (set PORT to override)
+```
 
-1. Create an account on Vercel and connect it to your GitHub account.
-2. Import your repository.
-3. Add the environment variables for your desired provider, e.g.:
-   - `DEEPSEEK_API_KEY`
-   - `DEEPSEEK_API_BASE`
-   - `DEFAULT_PROVIDER`
-4. Click "Deploy".
+### Docker
 
-### Other Hosting Options
+A `Dockerfile` and `docker-compose.yml` are included (Deno-based). With Docker
+running:
 
-The application can also be deployed on:
-- [Netlify](https://netlify.com)
-- [Cloudflare Pages](https://pages.cloudflare.com)
-- Any platform that supports Next.js applications
+```bash
+docker compose up --build
+```
 
-**Keep in Mind that if you host it on a platform, (like Vercel, Netlify, etc.) you can not use local models through Ollama or LM Studio, unless using something like Tunneling via [ngrok](https://ngrok.com).**
+### Other hosting options
+
+- [Deno Deploy](https://deno.com/deploy)
+- Any host that can run a Deno (or Node) process and serve the
+  `adapter-node` output
+- Swap in a different [SvelteKit adapter](https://svelte.dev/docs/kit/adapters)
+  (Vercel, Netlify, Cloudflare) if you prefer a serverless target
+
+**Keep in mind that if you host it on a remote platform you cannot reach local
+models through Ollama or LM Studio unless you expose them, e.g. via tunneling
+with [ngrok](https://ngrok.com).**
 
 ## Usage
 
@@ -214,6 +245,7 @@ The application can also be deployed on:
 ## Roadmap
 
 ### AI Models and Providers
+
 - [x] Integration with [Ollama](https://ollama.ai) for local model execution
 - [x] Support for [LM Studio](https://lmstudio.ai) to use local models
 - [x] Predefined provider: DeepSeek
@@ -222,24 +254,28 @@ The application can also be deployed on:
 - [x] Adding more predefined providers (Anthropic, Groq, etc.)
 
 ### Advanced Code Generation
-- [ ] Choose between different Frameworks and Libraries (React, Vue, Angular, etc.)
+
+- [ ] Choose between different Frameworks and Libraries (React, Vue, Angular,
+      etc.)
 - [ ] File-based code generation (multiple files)
 - [ ] Save and load projects
 - [ ] Agentic diff-editing capabilities
 
 ### UI/UX Improvements
+
 - [ ] Dark/Light theme toggle
 - [ ] Customizable code editor settings
 - [ ] Drag-and-drop interface for UI components
 - [ ] History of generated code
 
 ### Accessibility
+
 - [ ] Transcription and voice input for prompts
-- [ ] Anything; feel free to make suggestions 
+- [ ] Anything; feel free to make suggestions
 
 ### Desktop App
-- [ ] Turning into a cross-platform desktop app (Electron)
 
+- [ ] Turning into a cross-platform desktop app (Electron)
 
 ## Contributing
 
@@ -253,5 +289,5 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
+for details.

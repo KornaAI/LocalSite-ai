@@ -3,11 +3,8 @@
 # dependencies
 /node_modules
 
-# next.js
-/.next/
-/out/
-
-# production
+# SvelteKit
+/.svelte-kit
 /build
 
 # debug
@@ -30,7 +27,6 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 
 package-lock.json
 unused-components.md
