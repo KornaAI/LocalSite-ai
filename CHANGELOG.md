@@ -1,8 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.1] - 2026-06-17
 
-### 🚀 Improved — Enterprise-Grade Live Preview
+### Improved Live Preview
 
 The Live Preview architecture has been completely overhauled to deliver a flawlessly smooth, professional "morphing" experience while streaming AI-generated code, explicitly addressing the chaotic edge cases of modern CSS and Vanilla JS SPAs.
 
