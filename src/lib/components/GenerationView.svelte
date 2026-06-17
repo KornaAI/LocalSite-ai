@@ -32,24 +32,69 @@
     onRegenerateWithNewPrompt
   }: Props = $props();
 
-  const darkModeStyle = `
+  const injectedSetup = `
   <style>
     :root { color-scheme: dark; }
-    html, body { background-color: #121212; color: #ffffff; min-height: 100%; }
-    body { margin: 0; padding: 0; transition: background-color 0.2s ease; }
+    body { margin: 0; padding: 0; min-height: 100vh; }
   </style>
+  <script>
+    document.addEventListener('click', e => {
+      const a = e.target.closest('a');
+      if (a) {
+        const href = a.getAttribute('href') || '';
+        
+        if (href.startsWith('#')) {
+          e.preventDefault();
+          
+          if (window.location.hash !== href && href !== '#') {
+            window.location.hash = href;
+          } else if (href === '#') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+          
+          if (href.length > 1) {
+            try {
+              const target = document.getElementById(href.substring(1));
+              if (target) {
+                target.scrollIntoView({ behavior: 'smooth' });
+              }
+            } catch (err) {}
+          }
+          return;
+        }
+        
+        e.preventDefault();
+      }
+    });
+    document.addEventListener('submit', e => {
+      e.preventDefault();
+    });
+  <\/script>
 `;
 
   function prepareHtmlContent(code: string): string {
-    if (code.includes('<head>')) {
-      return code.replace('<head>', `<head>${darkModeStyle}`);
-    } else if (code.includes('<html>')) {
-      return code.replace('<html>', `<html><head>${darkModeStyle}</head>`);
+    const fastForwardStyle = isGenerating ? `
+      <style>
+        * {
+          animation-duration: 0.001s !important;
+          animation-delay: 0s !important;
+          transition-duration: 0.001s !important;
+          transition-delay: 0s !important;
+        }
+      </style>
+    ` : '';
+    
+    const injected = injectedSetup + fastForwardStyle;
+
+    if (/<\s*head[^>]*>/i.test(code)) {
+      return code.replace(/<\s*head[^>]*>/i, (match) => `${match}${injected}`);
+    } else if (/<\s*html[^>]*>/i.test(code)) {
+      return code.replace(/<\s*html[^>]*>/i, (match) => `${match}<head>${injected}</head>`);
     }
     return `
       <!DOCTYPE html>
       <html>
-        <head>${darkModeStyle}</head>
+        <head>${injected}</head>
         <body>${code}</body>
       </html>
     `;
@@ -71,28 +116,58 @@
 
   // ---- Debounced preview update ----
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-  function debouncedUpdatePreview(code: string) {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      previewContent = prepareHtmlContent(code);
-    }, 200);
-  }
+  let lastUpdateTime = 0;
+
   function flushPreview(code: string) {
     clearTimeout(debounceTimer);
     previewContent = prepareHtmlContent(code);
+    lastUpdateTime = Date.now();
+  }
+
+  function syncGeneratedCode(code: string) {
+    editedCode = code;
+    originalCode = code;
+
+    if (!code) {
+      lastUpdateTime = 0;
+      flushPreview(code);
+      return;
+    }
+
+    const now = Date.now();
+    
+    // Immediate First Frame
+    if (lastUpdateTime === 0) {
+      flushPreview(code);
+      return;
+    }
+
+    // Throttle during generation
+    if (now - lastUpdateTime >= 1000) {
+      flushPreview(code);
+      return;
+    }
+
+    // Debounce for final chunk
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      flushPreview(code);
+    }, 1000);
   }
 
   // When new generated code arrives, reset edit buffers and refresh preview
   $effect(() => {
     const code = generatedCode;
-    editedCode = code;
-    originalCode = code;
-    if (code) debouncedUpdatePreview(code);
+    if (code) {
+      syncGeneratedCode(code);
+    }
   });
 
-  // Live-update the preview as the user edits
+  // Force a final flush when generation completes to remove fast-forward styles
   $effect(() => {
-    if (editedCode) debouncedUpdatePreview(editedCode);
+    if (!isGenerating && generatedCode) {
+      flushPreview(generatedCode);
+    }
   });
 
   const providerLabel = $derived(
@@ -148,7 +223,13 @@
   // Props shared with the CodePanel
   const codePanelHandlers = {
     setEditable: (value: boolean) => (isEditable = value),
-    onEditedCodeChange: (value: string) => (editedCode = value),
+    onEditedCodeChange: (value: string) => {
+      editedCode = value;
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        flushPreview(value);
+      }, 500);
+    },
     onNewPromptChange: (value: string) => (newPrompt = value),
     requestSaveDialog: () => (showSaveDialog = true)
   };

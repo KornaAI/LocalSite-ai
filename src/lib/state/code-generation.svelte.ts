@@ -91,10 +91,12 @@ export class CodeGeneration {
       let hasReceivedReasoning = false;
       const decoder = new TextDecoder();
 
-      const stripFences = (s: string) =>
-        s.replace(/^```html\n/, "").replace(/```$/, "");
+      const stripFences = (s: string) => {
+        return s
+          .replace(/^[\s\S]*?```(?:[a-zA-Z0-9]+)?\s*\n/i, "")
+          .replace(/\n\s*```[\s\S]*$/i, "");
+      };
 
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read();
 
@@ -119,6 +121,9 @@ export class CodeGeneration {
             const part: StreamPart = JSON.parse(line);
 
             if (part.type === "text") {
+              if (this.isThinking) {
+                this.isThinking = false;
+              }
               codeChunks.push(part.content);
               codeUpdated = true;
             } else if (part.type === "reasoning") {

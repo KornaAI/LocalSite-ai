@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { Laptop, Smartphone, Tablet, RefreshCw, Loader2 } from '@lucide/svelte';
   import Button from '$lib/components/ui/Button.svelte';
 
@@ -30,9 +31,120 @@
     viewportSize === 'desktop'
       ? 'w-full h-full'
       : viewportSize === 'tablet'
-        ? 'w-[768px] max-h-full'
-        : 'w-[375px] max-h-full'
+        ? 'w-[768px] h-full'
+        : 'w-[375px] h-full'
   );
+
+  // --- Double Buffering State ---
+  let activeFrame = $state<1 | 2>(1);
+  let content1 = $state('');
+  let content2 = $state('');
+
+  let iframe1 = $state<HTMLIFrameElement>();
+  let iframe2 = $state<HTMLIFrameElement>();
+
+  // Manual opacity and z-index control for seamless crossfading
+  let opacity1 = $state(1);
+  let opacity2 = $state(0);
+  let zIndex1 = $state(20);
+  let zIndex2 = $state(10);
+  let pointerEvents1 = $state<'auto' | 'none'>('auto');
+  let pointerEvents2 = $state<'auto' | 'none'>('none');
+
+  let swapTimeout: ReturnType<typeof setTimeout>;
+  let fadeOutTimeout: ReturnType<typeof setTimeout>;
+  let previousKey = -1;
+  let skipNextScrollSync = false;
+
+  // Trigger swap on content change OR explicit refresh (previewKey)
+  $effect(() => {
+    const currentKey = previewKey;
+    const baseHtml = previewContent;
+    
+    if (!baseHtml) return;
+
+    // Force strict inequality so Svelte always updates the srcdoc,
+    // ensuring the hidden iframe actually reloads and reinitializes JS.
+    const html = baseHtml + `\n<!-- update: ${Date.now()}-${Math.random()} -->`;
+
+    untrack(() => {
+      if (currentKey !== previousKey) {
+        skipNextScrollSync = true;
+        previousKey = currentKey;
+      } else {
+        skipNextScrollSync = false;
+      }
+
+      clearTimeout(swapTimeout);
+
+      if (activeFrame === 1) {
+        content2 = html;
+        swapTimeout = setTimeout(() => handleIframeLoad(2), 400);
+      } else {
+        content1 = html;
+        swapTimeout = setTimeout(() => handleIframeLoad(1), 400);
+      }
+    });
+  });
+
+  function handleIframeLoad(frameNumber: number) {
+    clearTimeout(swapTimeout);
+    clearTimeout(fadeOutTimeout);
+    
+    try {
+      if (activeFrame === 1 && frameNumber === 2) {
+        if (!skipNextScrollSync && iframe1?.contentWindow && iframe2?.contentWindow) {
+          iframe2.contentWindow.scrollTo({
+            top: iframe1.contentWindow.scrollY,
+            left: iframe1.contentWindow.scrollX,
+            behavior: 'instant'
+          });
+        }
+        activeFrame = 2;
+        zIndex2 = 20; // New frame on top
+        zIndex1 = 10; // Old frame underneath
+        pointerEvents2 = 'auto';
+        pointerEvents1 = 'none';
+        opacity2 = 1; // Fade in new frame
+        
+        // Keep old frame fully opaque until new frame finishes fading in
+        fadeOutTimeout = setTimeout(() => {
+          opacity1 = 0;
+        }, 200);
+
+      } else if (activeFrame === 2 && frameNumber === 1) {
+        if (!skipNextScrollSync && iframe1?.contentWindow && iframe2?.contentWindow) {
+          iframe1.contentWindow.scrollTo({
+            top: iframe2.contentWindow.scrollY,
+            left: iframe2.contentWindow.scrollX,
+            behavior: 'instant'
+          });
+        }
+        activeFrame = 1;
+        zIndex1 = 20; // New frame on top
+        zIndex2 = 10; // Old frame underneath
+        pointerEvents1 = 'auto';
+        pointerEvents2 = 'none';
+        opacity1 = 1; // Fade in new frame
+        
+        // Keep old frame fully opaque until new frame finishes fading in
+        fadeOutTimeout = setTimeout(() => {
+          opacity2 = 0;
+        }, 200);
+      }
+    } catch (e) {
+      activeFrame = frameNumber as 1 | 2;
+      // Fallback
+      if (activeFrame === 1) {
+        opacity1 = 1; opacity2 = 0; zIndex1 = 20; zIndex2 = 10;
+        pointerEvents1 = 'auto'; pointerEvents2 = 'none';
+      } else {
+        opacity1 = 0; opacity2 = 1; zIndex1 = 10; zIndex2 = 20;
+        pointerEvents1 = 'none'; pointerEvents2 = 'auto';
+      }
+    }
+    skipNextScrollSync = false;
+  }
 </script>
 
 <div class="flex h-full flex-col">
@@ -97,15 +209,24 @@
         </div>
       {:else}
         <div class="relative h-full w-full">
-          {#key previewKey}
-            <iframe
-              srcdoc={previewContent}
-              class="absolute inset-0 z-10 h-full w-full"
-              title="Preview"
-              sandbox="allow-scripts"
-              style="background-color: #121212; opacity: 1; transition: opacity 0.15s ease-in-out;"
-            ></iframe>
-          {/key}
+          <iframe
+            bind:this={iframe1}
+            srcdoc={content1}
+            onload={() => handleIframeLoad(1)}
+            class="absolute inset-0 h-full w-full transition-opacity duration-200 ease-in-out"
+            title="Preview 1"
+            sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin"
+            style="background-color: #121212; opacity: {opacity1}; z-index: {zIndex1}; pointer-events: {pointerEvents1};"
+          ></iframe>
+          <iframe
+            bind:this={iframe2}
+            srcdoc={content2}
+            onload={() => handleIframeLoad(2)}
+            class="absolute inset-0 h-full w-full transition-opacity duration-200 ease-in-out"
+            title="Preview 2"
+            sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin"
+            style="background-color: #121212; opacity: {opacity2}; z-index: {zIndex2}; pointer-events: {pointerEvents2};"
+          ></iframe>
 
           {#if isGenerating}
             <div
