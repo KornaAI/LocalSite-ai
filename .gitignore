@@ -16,6 +16,8 @@ yarn-error.log*
 # env files
 .env
 .env.local
+.env.production
+.env.*.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -30,3 +32,9 @@ yarn-error.log*
 
 package-lock.json
 unused-components.md
+
+# OS
+.DS_Store
+
+# Deno
+deno.lock.bak

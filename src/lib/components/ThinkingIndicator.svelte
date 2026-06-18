@@ -13,6 +13,7 @@
   let dots = $state('');
   let hasFinished = $state(false);
   let dropdownEl = $state<HTMLDivElement>();
+  let containerEl = $state<HTMLDivElement>();
 
   const dropdownPosition = $derived(
     position === 'top-right'
@@ -25,6 +26,22 @@
   );
 
   const lines = $derived(thinkingOutput.split('\n'));
+
+  function closeDropdown() {
+    isOpen = false;
+  }
+
+  function onDocumentClick(event: MouseEvent) {
+    if (isOpen && containerEl && !containerEl.contains(event.target as Node)) {
+      closeDropdown();
+    }
+  }
+
+  function onDocumentKeydown(event: KeyboardEvent) {
+    if (isOpen && event.key === 'Escape') {
+      closeDropdown();
+    }
+  }
 
   // Animated dots for "Thinking..."
   $effect(() => {
@@ -55,10 +72,22 @@
       dropdownEl.scrollTop = dropdownEl.scrollHeight;
     }
   });
+
+  $effect(() => {
+    if (!isOpen) return;
+
+    document.addEventListener('click', onDocumentClick);
+    document.addEventListener('keydown', onDocumentKeydown);
+
+    return () => {
+      document.removeEventListener('click', onDocumentClick);
+      document.removeEventListener('keydown', onDocumentKeydown);
+    };
+  });
 </script>
 
 {#if thinkingOutput || isThinking}
-  <div class="relative">
+  <div class="relative" bind:this={containerEl}>
     <button
       type="button"
       class="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors {isOpen
@@ -88,7 +117,7 @@
     {#if isOpen}
       <div
         bind:this={dropdownEl}
-        class="absolute {dropdownPosition} z-50 mt-1 max-h-[300px] w-[400px] overflow-y-auto rounded-md border border-gray-800 bg-gray-900 p-3"
+        class="absolute {dropdownPosition} z-50 mt-1 max-h-[300px] w-[min(400px,90vw)] overflow-y-auto rounded-md border border-gray-800 bg-gray-900 p-3"
       >
         <h4 class="mb-2 text-xs font-medium text-gray-400">THINKING PROCESS:</h4>
         <div class="whitespace-pre-wrap font-mono text-xs text-gray-300">

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { toast } from 'svelte-sonner';
   import LoadingScreen from '$lib/components/LoadingScreen.svelte';
   import WelcomeView from '$lib/components/WelcomeView.svelte';
   import GenerationView from '$lib/components/GenerationView.svelte';
@@ -18,11 +19,37 @@
   const gen = new CodeGeneration();
 
   onMount(() => {
-    const timer = setTimeout(() => (isLoading = false), 1250);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+
+    const fallback = setTimeout(() => {
+      if (!cancelled) isLoading = false;
+    }, 500);
+
+    void document.fonts.ready.then(() => {
+      if (!cancelled) isLoading = false;
+    });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(fallback);
+    };
   });
 
+  function validateGenerationInput(): boolean {
+    if (!prompt.trim() || !selectedModel || !selectedProvider) {
+      toast.error('Please enter a prompt and select a provider and model.');
+      return false;
+    }
+    if (selectedSystemPrompt === 'custom' && !customSystemPrompt.trim()) {
+      toast.error('Please enter a custom system prompt.');
+      return false;
+    }
+    return true;
+  }
+
   async function handleGenerate() {
+    if (!validateGenerationInput()) return;
+
     showGenerationView = true;
     await gen.generateCode({
       prompt,
@@ -45,6 +72,11 @@
       customSystemPrompt
     });
   }
+
+  function handleRestart() {
+    gen.reset();
+    showGenerationView = false;
+  }
 </script>
 
 {#if isLoading}
@@ -60,6 +92,7 @@
     thinkingOutput={gen.thinkingOutput}
     isThinking={gen.isThinking}
     onRegenerateWithNewPrompt={handleRegenerateWithNewPrompt}
+    onRestart={handleRestart}
   />
 {:else}
   <WelcomeView

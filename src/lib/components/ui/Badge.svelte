@@ -17,7 +17,7 @@
   };
 </script>
 
-<div
+<span
   class={cn(
     'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors',
     variants[variant],
@@ -25,4 +25,4 @@
   )}
 >
   {@render children?.()}
-</div>
+</span>

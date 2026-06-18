@@ -84,6 +84,7 @@
     </div>
   {:else}
     <Select
+      id="provider-select"
       value={selectedProvider}
       {items}
       placeholder="Choose an AI provider..."

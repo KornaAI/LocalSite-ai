@@ -1,66 +1,139 @@
 import type { RequestHandler } from "./$types";
-import { env } from "$env/dynamic/private";
-import { LLMProvider } from "$lib/server/providers/config";
+import {
+  isProviderConfigured,
+  LLMProvider,
+  parseLLMProvider,
+  resolveDefaultProvider,
+} from "$lib/server/providers/config";
 import { generateCodeStream } from "$lib/server/providers/provider";
 import {
   DEFAULT_SYSTEM_PROMPT,
   THINKING_SYSTEM_PROMPT,
 } from "$lib/server/providers/prompts";
 
+const MAX_PROMPT_LENGTH = 100_000;
+const MAX_MODEL_LENGTH = 256;
+const MAX_SYSTEM_PROMPT_LENGTH = 100_000;
+const MAX_TOKENS = 128_000;
+const VALID_SYSTEM_PROMPT_TYPES = new Set(["default", "thinking", "custom"]);
+
+function jsonError(message: string, status: number): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function streamErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "Stream error occurred";
+}
+
 export const POST: RequestHandler = async ({ request }) => {
   try {
-    // Parse the JSON body
     const {
-      prompt,
-      model,
+      prompt: rawPrompt,
+      model: rawModel,
       provider: providerParam,
-      customSystemPrompt,
+      customSystemPrompt: rawCustomSystemPrompt,
       maxTokens,
       systemPromptType,
     } = await request.json();
 
-    // Check if prompt and model are provided
-    if (!prompt || !model) {
-      return new Response(
-        JSON.stringify({ error: "Prompt and model are required" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        },
+    if (typeof rawPrompt !== "string") {
+      return jsonError("Prompt must be a string", 400);
+    }
+    if (typeof rawModel !== "string") {
+      return jsonError("Model must be a string", 400);
+    }
+
+    const prompt = rawPrompt.trim();
+    if (!prompt) {
+      return jsonError("Prompt is required and cannot be empty", 400);
+    }
+    if (prompt.length > MAX_PROMPT_LENGTH) {
+      return jsonError(
+        `Prompt exceeds maximum length of ${MAX_PROMPT_LENGTH} characters`,
+        400,
       );
     }
 
-    // Parse maxTokens as a number if it's provided
-    const parsedMaxTokens = maxTokens
-      ? parseInt(maxTokens.toString(), 10)
-      : undefined;
-
-    // Determine the provider to use
-    let provider: LLMProvider;
-
-    if (
-      providerParam &&
-      Object.values(LLMProvider).includes(providerParam as LLMProvider)
-    ) {
-      provider = providerParam as LLMProvider;
-    } else {
-      // Use the default provider from environment variables or DeepSeek as fallback
-      provider = (env.DEFAULT_PROVIDER as LLMProvider) || LLMProvider.DEEPSEEK;
+    const model = rawModel.trim();
+    if (!model) {
+      return jsonError("Model is required and cannot be empty", 400);
+    }
+    if (model.length > MAX_MODEL_LENGTH) {
+      return jsonError(
+        `Model name exceeds maximum length of ${MAX_MODEL_LENGTH} characters`,
+        400,
+      );
     }
 
-    // Determine the final system prompt based on type or custom input
+    if (
+      systemPromptType !== undefined &&
+      systemPromptType !== null &&
+      !VALID_SYSTEM_PROMPT_TYPES.has(String(systemPromptType))
+    ) {
+      return jsonError(
+        "Invalid systemPromptType. Must be one of: default, thinking, custom",
+        400,
+      );
+    }
+
+    const customSystemPrompt = typeof rawCustomSystemPrompt === "string"
+      ? rawCustomSystemPrompt.trim()
+      : undefined;
+
+    if (systemPromptType === "custom" && !customSystemPrompt) {
+      return jsonError(
+        "Custom system prompt required when systemPromptType is custom",
+        400,
+      );
+    }
+
+    if (
+      customSystemPrompt &&
+      customSystemPrompt.length > MAX_SYSTEM_PROMPT_LENGTH
+    ) {
+      return jsonError(
+        `Custom system prompt exceeds maximum length of ${MAX_SYSTEM_PROMPT_LENGTH} characters`,
+        400,
+      );
+    }
+
+    let parsedMaxTokens: number | undefined;
+    if (maxTokens !== undefined && maxTokens !== null && maxTokens !== "") {
+      parsedMaxTokens = parseInt(String(maxTokens), 10);
+      if (parsedMaxTokens && (isNaN(parsedMaxTokens) || parsedMaxTokens <= 0)) {
+        parsedMaxTokens = undefined;
+      }
+      if (parsedMaxTokens !== undefined && parsedMaxTokens > MAX_TOKENS) {
+        return jsonError(
+          `maxTokens must be a positive integer up to ${MAX_TOKENS}`,
+          400,
+        );
+      }
+    }
+
+    const provider =
+      parseLLMProvider(typeof providerParam === "string" ? providerParam : null) ??
+        resolveDefaultProvider();
+
+    if (!isProviderConfigured(provider)) {
+      return jsonError(`Provider "${provider}" is not configured or is disabled`, 400);
+    }
+
     let finalSystemPrompt = customSystemPrompt;
 
     if (!finalSystemPrompt) {
       if (systemPromptType === "thinking") {
         finalSystemPrompt = THINKING_SYSTEM_PROMPT;
       } else {
-        // Fallback to default
         finalSystemPrompt = DEFAULT_SYSTEM_PROMPT;
       }
     }
 
-    // Generate code using Vercel AI SDK streamText
     const result = await generateCodeStream(
       provider,
       model,
@@ -69,26 +142,38 @@ export const POST: RequestHandler = async ({ request }) => {
       parsedMaxTokens,
     );
 
-    // Create a custom stream that sends text and reasoning as separate JSON lines
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
+        const onAbort = () => {
+          controller.close();
+        };
+        request.signal.addEventListener("abort", onAbort);
+
         try {
           for await (const part of result.fullStream) {
+            if (request.signal.aborted) {
+              controller.close();
+              return;
+            }
             if (part.type === "text-delta") {
-              // Send text content - in AI SDK v5, the property is 'text' not 'textDelta'
               controller.enqueue(
                 encoder.encode(
                   JSON.stringify({ type: "text", content: part.text }) + "\n",
                 ),
               );
             } else if (part.type === "reasoning-delta") {
-              // Send reasoning content (native reasoning models like deepseek-reasoner)
-              // In AI SDK v5, reasoning-delta uses 'text' property
               controller.enqueue(
                 encoder.encode(
                   JSON.stringify({ type: "reasoning", content: part.text }) +
                     "\n",
+                ),
+              );
+            } else if (part.type === "error") {
+              const msg = streamErrorMessage(part.error);
+              controller.enqueue(
+                encoder.encode(
+                  JSON.stringify({ type: "error", content: msg }) + "\n",
                 ),
               );
             }
@@ -97,7 +182,12 @@ export const POST: RequestHandler = async ({ request }) => {
         } catch (error) {
           console.error("Stream error:", error);
           controller.error(error);
+        } finally {
+          request.signal.removeEventListener("abort", onAbort);
         }
+      },
+      cancel() {
+        // Client disconnected; loop checks request.signal.aborted
       },
     });
 
@@ -111,14 +201,6 @@ export const POST: RequestHandler = async ({ request }) => {
   } catch (error) {
     console.error("Error generating code:", error);
 
-    // Return a more specific error message if available
-    const errorMessage = error instanceof Error
-      ? error.message
-      : "Error generating code";
-
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError("Generation failed. Check your configuration.", 500);
   }
 };

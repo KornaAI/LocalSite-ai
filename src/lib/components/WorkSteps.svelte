@@ -15,6 +15,10 @@
     detector: (code: string, generationComplete: boolean) => boolean;
   }
 
+  function hasHtmlTag(code: string, tag: string): boolean {
+    return new RegExp(`<${tag}\\b`, 'i').test(code);
+  }
+
   const STEP_DEFINITIONS: StepDefinition[] = [
     {
       id: 'init',
@@ -25,49 +29,78 @@
       id: 'html_structure',
       label: 'Generating HTML structure...',
       detector: (code) =>
-        code.includes('<html') || code.includes('<body') || code.includes('<head')
+        hasHtmlTag(code, 'html') ||
+        hasHtmlTag(code, 'body') ||
+        hasHtmlTag(code, 'head') ||
+        /<!doctype\s+html\b/i.test(code)
     },
     {
       id: 'content',
       label: 'Adding content...',
-      detector: (code) =>
-        code.includes('<div') ||
-        code.includes('<p') ||
-        code.includes('<h1') ||
-        code.includes('<span') ||
-        code.includes('<img') ||
-        code.includes('<ul') ||
-        code.includes('<section')
+      detector: (code) => {
+        const contentTags = [
+          'div',
+          'p',
+          'h1',
+          'h2',
+          'h3',
+          'span',
+          'img',
+          'ul',
+          'ol',
+          'section',
+          'main',
+          'article'
+        ];
+        const matchedTags = contentTags.filter((tag) => hasHtmlTag(code, tag));
+
+        if (matchedTags.length >= 2) return true;
+        if (matchedTags.length === 1) {
+          const tag = matchedTags[0];
+          return new RegExp(`<${tag}\\b[^>]*>[\\s\\S]+?</${tag}>`, 'i').test(code);
+        }
+        return false;
+      }
     },
     {
       id: 'styles',
       label: 'Adding styles...',
-      detector: (code) =>
-        code.includes('<style') || code.includes('class=') || code.includes('style=')
+      detector: (code) => {
+        if (/<style\b/i.test(code)) return true;
+
+        const hasClassAttr = /\bclass\s*=\s*["'][^"']+["']/i.test(code);
+        const hasInlineStyle = /\bstyle\s*=\s*["'][^"']+["']/i.test(code);
+        const hasStyledElement = /<[a-z][a-z0-9]*\b[^>]*(?:class|style)\s*=/i.test(code);
+
+        return hasStyledElement && (hasClassAttr || hasInlineStyle);
+      }
     },
     {
       id: 'javascript',
       label: 'Implementing JavaScript...',
       detector: (code, complete) => {
-        const hasJavaScript =
-          code.includes('<script') ||
-          code.includes('function') ||
-          code.includes('addEventListener') ||
-          code.includes('document.') ||
-          code.includes('window.') ||
-          code.includes('const ') ||
-          code.includes('let ') ||
-          code.includes('var ');
+        const hasScriptTag = /<script\b/i.test(code);
+        const jsSignals = [
+          /\bfunction\s+\w+\s*\(/,
+          /\bfunction\s*\(/,
+          /\baddEventListener\s*\(/,
+          /\bdocument\.\w+/,
+          /\bwindow\.\w+/,
+          /\bconst\s+\w+\s*=/,
+          /\blet\s+\w+\s*=/,
+          /\bvar\s+\w+\s*=/
+        ].filter((pattern) => pattern.test(code)).length;
 
-        if (!hasJavaScript) return false;
+        if (!hasScriptTag && jsSignals < 2) return false;
         if (complete) return true;
 
-        const scriptTagsCount = (code.match(/<script/g) || []).length;
-        const closingScriptTagsCount = (code.match(/<\/script>/g) || []).length;
+        const scriptTagsCount = (code.match(/<script\b/gi) || []).length;
+        const closingScriptTagsCount = (code.match(/<\/script>/gi) || []).length;
 
         return (
           scriptTagsCount === closingScriptTagsCount &&
-          !code.trim().endsWith('function') &&
+          scriptTagsCount > 0 &&
+          !/\b(function|const|let|var)\s*$/.test(code.trim()) &&
           !code.trim().endsWith('{') &&
           !code.trim().endsWith(';')
         );

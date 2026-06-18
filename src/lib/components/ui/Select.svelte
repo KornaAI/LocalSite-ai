@@ -10,6 +10,7 @@
   }
 
   interface Props {
+    id?: string;
     value?: string;
     items: SelectItem[];
     placeholder?: string;
@@ -22,6 +23,7 @@
   }
 
   let {
+    id = 'system-prompt-select',
     value = $bindable(''),
     items,
     placeholder = 'Select...',
@@ -56,6 +58,7 @@
 <div class={cn('relative w-full', className)} bind:this={triggerEl}>
   <button
     type="button"
+    {id}
     {disabled}
     aria-haspopup="listbox"
     aria-expanded={open}

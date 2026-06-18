@@ -130,11 +130,31 @@ export function getProviderApiKey(provider: LLMProvider): string | null {
   return env[config.apiKeyEnvVar] || null;
 }
 
+// Helper function to get a provider's API key or throw if missing
+export function requireProviderApiKey(provider: LLMProvider): string {
+  const apiKey = getProviderApiKey(provider);
+  if (!apiKey?.trim()) {
+    throw new Error(`API key not configured for ${provider}`);
+  }
+  return apiKey;
+}
+
 // Get list of explicitly disabled providers from ENV
 function getDisabledProviders(): LLMProvider[] {
   const disabled = env.DISABLED_PROVIDERS?.trim();
   if (!disabled) return [];
-  return disabled.split(",").map((p) => p.trim()) as LLMProvider[];
+
+  const result: LLMProvider[] = [];
+  for (const entry of disabled.split(",").map((p) => p.trim())) {
+    if (!entry) continue;
+    const provider = parseLLMProvider(entry);
+    if (provider) {
+      result.push(provider);
+    } else {
+      console.warn(`Unrecognized provider in DISABLED_PROVIDERS: "${entry}"`);
+    }
+  }
+  return result;
 }
 
 // Check if a provider is configured and available
@@ -166,4 +186,23 @@ export function getAvailableProviders(): ProviderConfig[] {
   return Object.values(PROVIDER_CONFIGS).filter((config) =>
     isProviderConfigured(config.id)
   );
+}
+
+// Parse and validate a provider string against the LLMProvider enum
+export function parseLLMProvider(
+  value: string | undefined | null,
+): LLMProvider | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (Object.values(LLMProvider).includes(trimmed as LLMProvider)) {
+    return trimmed as LLMProvider;
+  }
+  return null;
+}
+
+// Resolve DEFAULT_PROVIDER from env with validation, falling back if invalid
+export function resolveDefaultProvider(
+  fallback: LLMProvider = LLMProvider.DEEPSEEK,
+): LLMProvider {
+  return parseLLMProvider(env.DEFAULT_PROVIDER) ?? fallback;
 }

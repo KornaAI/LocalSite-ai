@@ -59,10 +59,16 @@
     const cacheKey = `models_${provider}`;
     const cached = sessionStorage.getItem(cacheKey);
     if (cached) {
-      const cachedModels: Model[] = JSON.parse(cached);
-      models = cachedModels;
-      if (cachedModels.length > 0) selectedModel = cachedModels[0].id;
-      return;
+      try {
+        const cachedModels: Model[] = JSON.parse(cached);
+        models = cachedModels;
+        if (cachedModels.length > 0 && !selectedModel) {
+          selectedModel = cachedModels[0].id;
+        }
+        return;
+      } catch {
+        sessionStorage.removeItem(cacheKey);
+      }
     }
 
     let cancelled = false;
@@ -114,6 +120,18 @@
     };
   });
 
+  function handleProviderChange() {
+    selectedModel = '';
+  }
+
+  function handleGenerateClick() {
+    if (selectedSystemPrompt === 'custom' && !customSystemPrompt.trim()) {
+      toast.error('Please enter a custom system prompt.');
+      return;
+    }
+    onGenerate();
+  }
+
   function onMaxTokensInput(event: Event) {
     const raw = (event.target as HTMLInputElement).value;
     const value = raw ? parseInt(raw, 10) : undefined;
@@ -145,15 +163,15 @@
         class="min-h-[150px] w-full border-gray-800 bg-gray-900/80 pr-[120px] text-white placeholder:text-gray-500 transition-all duration-300 focus-visible:border-white focus-visible:ring-white"
       />
       <Button
-        onclick={onGenerate}
-        disabled={!prompt.trim() || !selectedModel}
+        onclick={handleGenerateClick}
+        disabled={!prompt.trim() || !selectedModel || (selectedSystemPrompt === 'custom' && !customSystemPrompt.trim())}
         class="absolute bottom-4 right-4 rounded-md border border-gray-800 bg-gray-900/90 px-12 py-3 text-base font-medium tracking-wider text-white transition-all duration-300 hover:border-gray-700 hover:bg-gray-800"
       >
         GENERATE
       </Button>
     </div>
 
-    <ProviderSelector bind:selectedProvider />
+    <ProviderSelector bind:selectedProvider onProviderChange={handleProviderChange} />
 
     <div class="mb-4 w-full">
       <label for="model-combobox" class="mb-2 block text-sm font-medium text-gray-300">

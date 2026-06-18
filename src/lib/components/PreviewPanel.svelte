@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { untrack, onDestroy } from 'svelte';
   import { Laptop, Smartphone, Tablet, RefreshCw, Loader2 } from '@lucide/svelte';
   import Button from '$lib/components/ui/Button.svelte';
 
@@ -31,8 +31,8 @@
     viewportSize === 'desktop'
       ? 'w-full h-full'
       : viewportSize === 'tablet'
-        ? 'w-[768px] h-full'
-        : 'w-[375px] h-full'
+        ? 'w-[768px] max-w-full h-full'
+        : 'w-[375px] max-w-full h-full'
   );
 
   // --- Double Buffering State ---
@@ -55,6 +55,16 @@
   let fadeOutTimeout: ReturnType<typeof setTimeout>;
   let previousKey = -1;
   let skipNextScrollSync = false;
+
+  // allow-scripts: run generated preview JS. allow-forms: interactive form elements.
+  // allow-same-origin: parent reads contentWindow.scrollX/Y to sync scroll between
+  // double-buffered iframes during seamless preview swaps (see handleIframeLoad).
+  const iframeSandbox = 'allow-scripts allow-forms allow-same-origin';
+
+  onDestroy(() => {
+    clearTimeout(swapTimeout);
+    clearTimeout(fadeOutTimeout);
+  });
 
   // Trigger swap on content change OR explicit refresh (previewKey)
   $effect(() => {
@@ -168,6 +178,7 @@
         variant={viewportSize === 'desktop' ? 'secondary' : 'ghost'}
         size="sm"
         class="h-7 w-7 p-0"
+        aria-label="Desktop view"
         onclick={() => setViewportSize('desktop')}
       >
         <Laptop class="h-4 w-4" />
@@ -176,6 +187,7 @@
         variant={viewportSize === 'tablet' ? 'secondary' : 'ghost'}
         size="sm"
         class="h-7 w-7 p-0"
+        aria-label="Tablet view"
         onclick={() => setViewportSize('tablet')}
       >
         <Tablet class="h-4 w-4" />
@@ -184,6 +196,7 @@
         variant={viewportSize === 'mobile' ? 'secondary' : 'ghost'}
         size="sm"
         class="h-7 w-7 p-0"
+        aria-label="Mobile view"
         onclick={() => setViewportSize('mobile')}
       >
         <Smartphone class="h-4 w-4" />
@@ -215,7 +228,7 @@
             onload={() => handleIframeLoad(1)}
             class="absolute inset-0 h-full w-full transition-opacity duration-200 ease-in-out"
             title="Preview 1"
-            sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin"
+            sandbox={iframeSandbox}
             style="background-color: #121212; opacity: {opacity1}; z-index: {zIndex1}; pointer-events: {pointerEvents1};"
           ></iframe>
           <iframe
@@ -224,7 +237,7 @@
             onload={() => handleIframeLoad(2)}
             class="absolute inset-0 h-full w-full transition-opacity duration-200 ease-in-out"
             title="Preview 2"
-            sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin"
+            sandbox={iframeSandbox}
             style="background-color: #121212; opacity: {opacity2}; z-index: {zIndex2}; pointer-events: {pointerEvents2};"
           ></iframe>
 

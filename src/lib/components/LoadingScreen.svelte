@@ -4,12 +4,16 @@
   let glitchClass = $state('');
 
   onMount(() => {
+    let glitchTimeout: ReturnType<typeof setTimeout> | undefined;
     const glitchInterval = setInterval(() => {
       glitchClass = 'glitch';
-      setTimeout(() => (glitchClass = ''), 200);
+      glitchTimeout = setTimeout(() => (glitchClass = ''), 200);
     }, 2000);
 
-    return () => clearInterval(glitchInterval);
+    return () => {
+      clearInterval(glitchInterval);
+      clearTimeout(glitchTimeout);
+    };
   });
 </script>
 

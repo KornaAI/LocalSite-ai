@@ -1,5 +1,125 @@
 # Changelog
 
+## [0.6.2] - 2026-06-18
+
+### Fixed
+
+- **Thinking mode completely broken.** The `THINKING_SYSTEM_PROMPT` used `<think>`
+  tags but `extractReasoningMiddleware` expected `<think>`. Reasoning output
+  ended up inside the generated HTML instead of the thinking panel. Tags now
+  aligned.
+- **Ollama ignored `OLLAMA_API_BASE` for generation.** Model listing used the
+  configured URL, but generation always hit the default localhost. Now uses
+  `createOllama({ baseURL })` for both.
+- **Monaco editor stopped streaming during generation.** The `executeEdits()`
+  replacement from v0.6.1 is silently blocked by Monaco in read-only mode.
+  Reverted to `setValue()` which works in all modes.
+- **Parallel generations mixed output.** No `AbortController` — a second
+  generation while one was running could merge code from both requests. Added
+  proper cancellation.
+- **Stale preview on regeneration.** Editor and preview kept showing old code
+  when starting a new generation because the `$effect` only ran on truthy
+  `generatedCode`. Now clears state when regeneration starts.
+- **"Don't save" didn't sync preview.** Clicking "Don't save" in the edit-mode
+  dialog reverted the editor but left the preview showing the edited version.
+  Now flushes immediately.
+- **View switched to GenerationView before validation.** Entering an empty
+  prompt and clicking Generate showed an empty generation view with no way back.
+  Now validates first.
+- **Stream errors silently swallowed.** Only `text-delta` and `reasoning-delta`
+  stream events were handled; `error` events were ignored. Failed generations
+  appeared to succeed. Error events now sent as NDJSON to the frontend.
+- **`DISABLED_PROVIDERS` bypassed in generate endpoint.** Clients could force
+  disabled providers via the POST `provider` parameter. Now checked
+  server-side with a 400 response.
+- **`DEFAULT_PROVIDER` env var accepted any string.** Invalid values caused
+  cryptic 500 errors. Now validated against the `LLMProvider` enum.
+- **Google API key exposed in URL query string.** Moved to `x-goog-api-key`
+  header.
+- **`Authorization: Bearer null` for Mistral/Cerebras.** Missing API key
+  produced a misleading auth header. Now validated before the request.
+- **Cloud provider `*_API_BASE` env vars documented but never used.**
+  `DEEPSEEK_API_BASE`, `ANTHROPIC_API_BASE`, etc. were in `.env.example` and
+  README but never passed to the SDK. All six cloud providers now pass
+  `baseURL` from config.
+- **API keys fell back to empty string.** Missing keys silently produced
+  generic provider errors. Now throws a clear "API key not configured" message.
+- **Two Monaco instances mounted simultaneously.** Mobile and desktop panels
+  were both in the DOM (CSS hidden). Now conditionally rendered, halving
+  memory usage.
+- **Race condition on model loading.** Switching providers quickly could
+  overwrite the correct model list with a stale response. Fixed with
+  cancellation tracking.
+- **SessionStorage cache crash.** `JSON.parse` without try/catch could crash
+  on corrupt data. Now catches and clears cache on error.
+- **Custom system prompt empty silently fell back to default.** Selecting
+  "Custom" with an empty textarea ran the default prompt. Now shows a
+  validation error.
+- **Monaco auto-scrolled to end during streaming.** User scroll position was
+  constantly reset. Now tracks if the user has scrolled away and skips
+  auto-scroll.
+- **No error boundary.** Unhandled errors showed a generic technical message.
+  Added `+error.svelte` with a styled dark-theme error page.
+- **Preview iframe race conditions.** Swap timeouts and fade-out timers were
+  not cleaned up on unmount. Added `onDestroy` cleanup.
+- **WorkSteps progress indicators unreliable.** Simple `includes()` string
+  matching caused steps to jump or stick. Replaced with regex-boundary
+  detectors.
+
+### Security
+
+- **API endpoints had no input validation or rate limiting.** Prompt length,
+  `maxTokens`, and `systemPromptType` are now validated server-side.
+- **Error details leaked to client.** 500 errors returned internal
+  provider/network details. Now returns a generic message; 400 validation
+  errors remain specific.
+- **Iframe sandbox tightened.** Removed `allow-popups` and `allow-modals`
+  from preview sandbox. `allow-same-origin` kept (required for scroll sync
+  between double-buffered iframes).
+- **Docker container ran as root.** Added non-root `USER appuser` and
+  `HEALTHCHECK` instruction. Replaced `git clone` with `COPY` so local builds
+  actually use local code.
+
+### Changed
+
+- **Restart button resets state** instead of `window.location.reload()`.
+  Prompt, provider, and model selections are preserved.
+- **Loading screen waits for fonts** (`document.fonts.ready`) instead of a
+  fixed 1250ms timeout.
+- **`stripFences()` runs once at stream end** instead of on every chunk,
+  preventing mid-stream HTML corruption from incomplete markdown fences.
+- **Legacy plain-text stream fallback.** If NDJSON parsing fails, raw lines
+  are now treated as text content instead of being silently dropped.
+- **Monaco `syncEditorContent` calls on init.** Code that arrives while Monaco
+  is loading is now picked up after initialization.
+- **Dialog only closes via explicit buttons.** Escape and backdrop click no
+  longer close the save confirmation dialog accidentally.
+- **Removed duplicate `SYSTEM_PROMPT`** in `provider.ts`; centralized in
+  `prompts.ts`.
+- **ESLint script removed** (was broken — no eslint in dependencies). Added
+  `deno lint` task to `deno.json`.
+- **Docker default provider unified to `ollama`** across `.env.example`,
+  `docker-compose.yml`, and `Dockerfile`.
+
+### Added
+
+- **`.dockerignore`** — excludes `node_modules`, `.git`, `.svelte-kit`,
+  `build`, markdown files, and env files from Docker build context.
+- **Complete `.env.example`** — all `*_API_BASE` variables, `PORT`, `HOST`,
+  and `BODY_SIZE_LIMIT` now documented with commented-out defaults.
+- **`.gitignore` gaps filled** — `.DS_Store`, `.env.production`,
+  `.env.*.local`, `deno.lock.bak`.
+
+### Removed
+
+- **Tailwind leftovers from React migration** — unused accordion keyframes
+  (`--radix-accordion-content-height`), `neon.green` color token (was white,
+  not used), `.tech-button` CSS class.
+- **Duplicate Roboto font import** in `app.css` (Inter and Space Mono already
+  loaded in `app.html`).
+
+---
+
 ## [0.6.1] - 2026-06-17
 
 ### Improved Live Preview

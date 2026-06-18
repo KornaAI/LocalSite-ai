@@ -4,7 +4,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createMistral } from "@ai-sdk/mistral";
 import { createCerebras } from "@ai-sdk/cerebras";
-import { ollama } from "ai-sdk-ollama";
+import { createOllama } from "ai-sdk-ollama";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   extractReasoningMiddleware,
@@ -13,11 +13,13 @@ import {
   wrapLanguageModel,
 } from "ai";
 import { env } from "$env/dynamic/private";
-import { getProviderApiKey, getProviderBaseUrl, LLMProvider } from "./config";
-
-// Shared system prompt for all providers
-export const SYSTEM_PROMPT =
-  "You are an expert web developer AI. Your task is to generate a single, self-contained HTML file based on the user's prompt. This HTML file must include all necessary HTML structure, CSS styles within <style> tags in the <head>, and JavaScript code within <script> tags, preferably at the end of the <body>. IMPORTANT: Do NOT use markdown formatting. Do NOT wrap the code in ```html and ``` tags. Do NOT output any text or explanation before or after the HTML code. Only output the raw HTML code itself, starting with <!DOCTYPE html> and ending with </html>. Ensure the generated CSS and JavaScript are directly embedded in the HTML file.";
+import {
+  getProviderApiKey,
+  getProviderBaseUrl,
+  LLMProvider,
+  requireProviderApiKey,
+} from "./config";
+import { DEFAULT_SYSTEM_PROMPT } from "./prompts";
 
 // Common interface for all providers
 export interface LLMProviderClient {
@@ -36,37 +38,43 @@ function wrapWithReasoningMiddleware(model: LanguageModel): LanguageModel {
 // Provider factory functions
 function getDeepSeekProvider() {
   return createDeepSeek({
-    apiKey: getProviderApiKey(LLMProvider.DEEPSEEK) || "",
+    apiKey: requireProviderApiKey(LLMProvider.DEEPSEEK),
+    baseURL: getProviderBaseUrl(LLMProvider.DEEPSEEK),
   });
 }
 
 function getOpenRouterProvider() {
   return createOpenRouter({
-    apiKey: getProviderApiKey(LLMProvider.OPENROUTER) || "",
+    apiKey: requireProviderApiKey(LLMProvider.OPENROUTER),
+    baseURL: getProviderBaseUrl(LLMProvider.OPENROUTER),
   });
 }
 
 function getAnthropicProvider() {
   return createAnthropic({
-    apiKey: getProviderApiKey(LLMProvider.ANTHROPIC) || "",
+    apiKey: requireProviderApiKey(LLMProvider.ANTHROPIC),
+    baseURL: getProviderBaseUrl(LLMProvider.ANTHROPIC),
   });
 }
 
 function getGoogleProvider() {
   return createGoogleGenerativeAI({
-    apiKey: getProviderApiKey(LLMProvider.GOOGLE) || "",
+    apiKey: requireProviderApiKey(LLMProvider.GOOGLE),
+    baseURL: getProviderBaseUrl(LLMProvider.GOOGLE),
   });
 }
 
 function getMistralProvider() {
   return createMistral({
-    apiKey: getProviderApiKey(LLMProvider.MISTRAL) || "",
+    apiKey: requireProviderApiKey(LLMProvider.MISTRAL),
+    baseURL: getProviderBaseUrl(LLMProvider.MISTRAL),
   });
 }
 
 function getCerebrasProvider() {
   return createCerebras({
-    apiKey: getProviderApiKey(LLMProvider.CEREBRAS) || "",
+    apiKey: requireProviderApiKey(LLMProvider.CEREBRAS),
+    baseURL: getProviderBaseUrl(LLMProvider.CEREBRAS),
   });
 }
 
@@ -74,7 +82,7 @@ function getOpenAICompatibleProvider() {
   return createOpenAICompatible({
     name: "openai_compatible",
     baseURL: getProviderBaseUrl(LLMProvider.OPENAI_COMPATIBLE),
-    apiKey: getProviderApiKey(LLMProvider.OPENAI_COMPATIBLE) || "",
+    apiKey: requireProviderApiKey(LLMProvider.OPENAI_COMPATIBLE),
   });
 }
 
@@ -117,6 +125,11 @@ class DeepSeekProviderClient implements LLMProviderClient {
   private provider = getDeepSeekProvider();
 
   async getModels() {
+    const apiKey = getProviderApiKey(LLMProvider.DEEPSEEK);
+    if (!apiKey) {
+      throw new Error("Cannot fetch DeepSeek models. Check your API key.");
+    }
+
     // DeepSeek has fixed models (no public API for listing)
     return [
       { id: "deepseek-chat", name: "DeepSeek Chat" },
@@ -212,8 +225,15 @@ class GoogleProviderClient implements LLMProviderClient {
   async getModels() {
     try {
       const apiKey = getProviderApiKey(LLMProvider.GOOGLE);
+      if (!apiKey) {
+        throw new Error("Cannot fetch Google AI models. Check your API key.");
+      }
+
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+        "https://generativelanguage.googleapis.com/v1beta/models",
+        {
+          headers: { "x-goog-api-key": apiKey },
+        },
       );
 
       if (!response.ok) {
@@ -225,7 +245,22 @@ class GoogleProviderClient implements LLMProviderClient {
       const data = await response.json();
       return data.models
         ? data.models
-          .filter((model: { name: string }) => model.name.includes("gemini"))
+          .filter(
+            (model: {
+              name: string;
+              supportedGenerationMethods?: string[];
+            }) => {
+              const id = model.name.replace("models/", "");
+              if (/embedding/i.test(id)) return false;
+              if (
+                model.supportedGenerationMethods &&
+                !model.supportedGenerationMethods.includes("generateContent")
+              ) {
+                return false;
+              }
+              return true;
+            },
+          )
           .map((model: { name: string; displayName?: string }) => ({
             id: model.name.replace("models/", ""),
             name: model.displayName || model.name.replace("models/", ""),
@@ -250,6 +285,10 @@ class MistralProviderClient implements LLMProviderClient {
   async getModels() {
     try {
       const apiKey = getProviderApiKey(LLMProvider.MISTRAL);
+      if (!apiKey) {
+        throw new Error("Cannot fetch Mistral models. Check your API key.");
+      }
+
       const response = await fetch("https://api.mistral.ai/v1/models", {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
@@ -286,6 +325,10 @@ class CerebrasProviderClient implements LLMProviderClient {
   async getModels() {
     try {
       const apiKey = getProviderApiKey(LLMProvider.CEREBRAS);
+      if (!apiKey) {
+        throw new Error("Cannot fetch Cerebras models. Check your API key.");
+      }
+
       const response = await fetch("https://api.cerebras.ai/v1/models", {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
@@ -358,6 +401,7 @@ class OpenAICompatibleProviderClient implements LLMProviderClient {
 // Ollama Provider Client
 class OllamaProviderClient implements LLMProviderClient {
   private baseUrl = getProviderBaseUrl(LLMProvider.OLLAMA);
+  private ollamaProvider = createOllama({ baseURL: this.baseUrl });
 
   async getModels() {
     try {
@@ -382,12 +426,7 @@ class OllamaProviderClient implements LLMProviderClient {
   getModel(modelId: string): LanguageModel {
     // Enable Ollama's native thinking support for reasoning models (deepseek-r1, qwen3)
     // The 'think' option enables the model to return thinking in message.thinking field
-    const baseModel = ollama(modelId, { think: true });
-    // Wrap with extractReasoningMiddleware to handle <think> tags if present
-    return wrapLanguageModel({
-      model: baseModel as Parameters<typeof wrapLanguageModel>[0]["model"],
-      middleware: extractReasoningMiddleware({ tagName: "think" }),
-    }) as LanguageModel;
+    return this.ollamaProvider(modelId, { think: true }) as LanguageModel;
   }
 }
 
@@ -437,7 +476,7 @@ export async function generateCodeStream(
 
   const result = streamText({
     model,
-    system: systemPrompt || SYSTEM_PROMPT,
+    system: systemPrompt || DEFAULT_SYSTEM_PROMPT,
     prompt,
     ...(maxTokens ? { maxTokens } : {}),
   });

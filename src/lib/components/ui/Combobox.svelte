@@ -9,6 +9,7 @@
   }
 
   interface Props {
+    id?: string;
     value?: string;
     items: ComboboxItem[];
     disabled?: boolean;
@@ -21,6 +22,7 @@
   }
 
   let {
+    id = 'model-combobox',
     value = $bindable(''),
     items,
     disabled = false,
@@ -75,6 +77,7 @@
 <div class={cn('relative w-full', className)} bind:this={containerEl}>
   <button
     type="button"
+    {id}
     role="combobox"
     aria-controls="combobox-listbox"
     aria-expanded={open}

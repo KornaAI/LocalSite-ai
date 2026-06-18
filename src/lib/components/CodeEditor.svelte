@@ -15,6 +15,7 @@
   let monaco: typeof Monaco | null = null;
   let isInitialMount = true;
   let isUserEditing = false;
+  let userScrolledAway = false;
   let suppressChange = false;
 
   onMount(() => {
@@ -59,11 +60,22 @@
         if (isEditable) isUserEditing = true;
       });
 
+      editor.onDidScrollChange(() => {
+        const model = editor?.getModel();
+        if (!model) return;
+        const visibleRanges = editor?.getVisibleRanges();
+        if (!visibleRanges || visibleRanges.length === 0) return;
+        const lastVisibleLine = visibleRanges[visibleRanges.length - 1].endLineNumber;
+        userScrolledAway = lastVisibleLine < model.getLineCount() - 5;
+      });
+
       editor.onDidChangeModelContent(() => {
         if (suppressChange) return;
         const value = editor?.getValue();
         if (onChange && value !== undefined) onChange(value);
       });
+
+      syncEditorContent(code);
     })();
 
     return () => {
@@ -75,25 +87,32 @@
     editor?.dispose();
   });
 
+  function syncEditorContent(next: string) {
+    if (!editor) return;
+    if (editor.getValue() === next) return;
+
+    suppressChange = true;
+    editor.setValue(next);
+    suppressChange = false;
+
+    const model = editor.getModel();
+    if (!isUserEditing && !isEditable && !userScrolledAway && model) {
+      editor.revealLine(model.getLineCount());
+    }
+  }
+
   // Sync external `code` changes into the editor without firing onChange
   $effect(() => {
-    const next = code;
-    if (editor && editor.getValue() !== next) {
-      suppressChange = true;
-      editor.setValue(next);
-      suppressChange = false;
-
-      const model = editor.getModel();
-      if (!isUserEditing && !isEditable && model) {
-        editor.revealLine(model.getLineCount());
-      }
-    }
+    syncEditorContent(code);
   });
 
   // Reflect readOnly + reset editing flag when edit mode changes
   $effect(() => {
     editor?.updateOptions({ readOnly: !isEditable });
-    if (!isEditable) isUserEditing = false;
+    if (!isEditable) {
+      isUserEditing = false;
+      userScrolledAway = false;
+    }
   });
 </script>
 

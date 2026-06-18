@@ -10,18 +10,7 @@
   }
 
   let { open = $bindable(false), class: className = '', children, onOpenChange }: Props = $props();
-
-  function close() {
-    open = false;
-    onOpenChange?.(false);
-  }
-
-  function onKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') close();
-  }
 </script>
-
-<svelte:window onkeydown={onKeydown} />
 
 {#if open}
   <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -29,7 +18,6 @@
     <div
       class="absolute inset-0 bg-black/70"
       role="presentation"
-      onclick={close}
     ></div>
     <div
       role="dialog"

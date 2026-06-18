@@ -1,13 +1,21 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { env } from "$env/dynamic/private";
-import { LLMProvider } from "$lib/server/providers/config";
+import {
+  getAvailableProviders,
+  isProviderConfigured,
+  resolveDefaultProvider,
+} from "$lib/server/providers/config";
 
 export const GET: RequestHandler = async () => {
   try {
-    // Use the default provider from environment variables or DeepSeek as fallback
-    const defaultProvider = (env.DEFAULT_PROVIDER as LLMProvider) ||
-      LLMProvider.DEEPSEEK;
+    let defaultProvider = resolveDefaultProvider();
+
+    if (!isProviderConfigured(defaultProvider)) {
+      const available = getAvailableProviders();
+      if (available.length > 0) {
+        defaultProvider = available[0].id;
+      }
+    }
 
     return json({ defaultProvider });
   } catch (error) {

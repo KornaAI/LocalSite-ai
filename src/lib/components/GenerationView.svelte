@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
+  import { toast } from 'svelte-sonner';
   import { Pane, PaneGroup, PaneResizer } from 'paneforge';
   import { Download, RefreshCw } from '@lucide/svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
@@ -18,18 +20,20 @@
     thinkingOutput?: string;
     isThinking?: boolean;
     onRegenerateWithNewPrompt: (newPrompt: string) => void;
+    onRestart: () => void;
   }
 
   let {
     prompt,
     model,
-    provider = 'deepseek',
+    provider = '',
     generatedCode,
     isGenerating,
     generationComplete,
     thinkingOutput = '',
     isThinking = false,
-    onRegenerateWithNewPrompt
+    onRegenerateWithNewPrompt,
+    onRestart
   }: Props = $props();
 
   const injectedSetup = `
@@ -65,9 +69,6 @@
         
         e.preventDefault();
       }
-    });
-    document.addEventListener('submit', e => {
-      e.preventDefault();
     });
   <\/script>
 `;
@@ -111,12 +112,27 @@
   let previewContent = $state('');
   let showSaveDialog = $state(false);
   let newPrompt = $state('');
+  let isDesktop = $state(false);
+
+  onMount(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    isDesktop = mq.matches;
+    const handler = (e: MediaQueryListEvent) => {
+      isDesktop = e.matches;
+    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  });
 
   const hasChanges = $derived(editedCode !== originalCode);
 
   // ---- Debounced preview update ----
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   let lastUpdateTime = 0;
+
+  onDestroy(() => {
+    clearTimeout(debounceTimer);
+  });
 
   function flushPreview(code: string) {
     clearTimeout(debounceTimer);
@@ -158,6 +174,16 @@
   // When new generated code arrives, reset edit buffers and refresh preview
   $effect(() => {
     const code = generatedCode;
+    const generating = isGenerating;
+
+    if (generating && !code) {
+      editedCode = '';
+      originalCode = '';
+      lastUpdateTime = 0;
+      flushPreview('');
+      return;
+    }
+
     if (code) {
       syncGeneratedCode(code);
     }
@@ -194,7 +220,10 @@
         copySuccess = true;
         setTimeout(() => (copySuccess = false), 2000);
       })
-      .catch((err) => console.error('Error copying:', err));
+      .catch((err) => {
+        console.error('Error copying:', err);
+        toast.error('Failed to copy to clipboard');
+      });
   }
 
   function refreshPreview() {
@@ -211,6 +240,7 @@
     element.download = 'generated-website.html';
     document.body.appendChild(element);
     element.click();
+    URL.revokeObjectURL(element.href);
     document.body.removeChild(element);
   }
 
@@ -242,7 +272,7 @@
       <div class="flex items-center gap-2">
         <h1 class="text-lg font-bold text-white">{providerLabel}</h1>
         <Badge variant="outline" class="border-white bg-gray-900 text-white">{model}</Badge>
-        {#if thinkingOutput}
+        {#if thinkingOutput || isThinking}
           <div class="ml-2">
             <ThinkingIndicator {thinkingOutput} {isThinking} position="top-left" />
           </div>
@@ -254,7 +284,7 @@
           size="sm"
           class="h-8 border-gray-800 text-gray-400 hover:border-gray-700 hover:text-white"
           disabled={isGenerating}
-          onclick={() => window.location.reload()}
+          onclick={onRestart}
         >
           <RefreshCw class="mr-1 h-4 w-4" />
           <span class="hidden sm:inline">Restart</span>
@@ -295,82 +325,87 @@
 
   <!-- Main content -->
   <div class="flex flex-1 overflow-hidden">
-    <!-- Mobile View -->
-    <div class="flex h-full w-full flex-col md:hidden">
-      <div class="h-full flex-col {activeTab === 'code' ? 'flex' : 'hidden'}">
-        <CodePanel
-          {isGenerating}
-          {generationComplete}
-          {isEditable}
-          {hasChanges}
-          {copySuccess}
-          {generatedCode}
-          {editedCode}
-          {originalCode}
-          previousPrompt={prompt}
-          {newPrompt}
-          {saveChanges}
-          {copyToClipboard}
-          {handleSendNewPrompt}
-          {...codePanelHandlers}
-        />
+    {#if isDesktop}
+      <!-- Desktop View - Resizable Panels -->
+      <div class="h-full w-full">
+        <PaneGroup direction="horizontal" class="h-full w-full">
+          <Pane defaultSize={65} minSize={30}>
+            <CodePanel
+              {isGenerating}
+              {generationComplete}
+              {isEditable}
+              {hasChanges}
+              {copySuccess}
+              {generatedCode}
+              {editedCode}
+              {originalCode}
+              previousPrompt={prompt}
+              {newPrompt}
+              {saveChanges}
+              {copyToClipboard}
+              {handleSendNewPrompt}
+              {...codePanelHandlers}
+            />
+          </Pane>
+          <PaneResizer
+            class="relative flex w-px items-center justify-center bg-gray-800 hover:bg-gray-700"
+          >
+            <div class="z-10 flex h-7 w-1.5 items-center justify-center rounded-sm bg-gray-700"></div>
+          </PaneResizer>
+          <Pane defaultSize={35} minSize={25}>
+            <PreviewPanel
+              {generationComplete}
+              {viewportSize}
+              {originalCode}
+              {editedCode}
+              {isGenerating}
+              {previewKey}
+              {previewContent}
+              {refreshPreview}
+              setViewportSize={(size) => (viewportSize = size)}
+            />
+          </Pane>
+        </PaneGroup>
       </div>
-      <div class="h-full flex-col {activeTab === 'preview' ? 'flex' : 'hidden'}">
-        <PreviewPanel
-          {generationComplete}
-          {viewportSize}
-          {originalCode}
-          {editedCode}
-          {isGenerating}
-          {previewKey}
-          {previewContent}
-          {refreshPreview}
-          setViewportSize={(size) => (viewportSize = size)}
-        />
+    {:else}
+      <!-- Mobile View -->
+      <div class="flex h-full w-full flex-col">
+        {#if activeTab === 'code'}
+          <div class="flex h-full flex-col">
+            <CodePanel
+              {isGenerating}
+              {generationComplete}
+              {isEditable}
+              {hasChanges}
+              {copySuccess}
+              {generatedCode}
+              {editedCode}
+              {originalCode}
+              previousPrompt={prompt}
+              {newPrompt}
+              {saveChanges}
+              {copyToClipboard}
+              {handleSendNewPrompt}
+              {...codePanelHandlers}
+            />
+          </div>
+        {:else}
+          <div class="flex h-full flex-col">
+            <PreviewPanel
+              {generationComplete}
+              {viewportSize}
+              {originalCode}
+              {editedCode}
+              {isGenerating}
+              {previewKey}
+              {previewContent}
+              {refreshPreview}
+              setViewportSize={(size) => (viewportSize = size)}
+            />
+          </div>
+        {/if}
       </div>
-    </div>
-
-    <!-- Desktop View - Resizable Panels -->
-    <div class="hidden h-full w-full md:block">
-      <PaneGroup direction="horizontal" class="h-full w-full">
-        <Pane defaultSize={65} minSize={30}>
-          <CodePanel
-            {isGenerating}
-            {generationComplete}
-            {isEditable}
-            {hasChanges}
-            {copySuccess}
-            {generatedCode}
-            {editedCode}
-            {originalCode}
-            previousPrompt={prompt}
-            {newPrompt}
-            {saveChanges}
-            {copyToClipboard}
-            {handleSendNewPrompt}
-            {...codePanelHandlers}
-          />
-        </Pane>
-        <PaneResizer
-          class="relative flex w-px items-center justify-center bg-gray-800 hover:bg-gray-700"
-        >
-          <div class="z-10 flex h-7 w-1.5 items-center justify-center rounded-sm bg-gray-700"></div>
-        </PaneResizer>
-        <Pane defaultSize={35} minSize={25}>
-          <PreviewPanel
-            {generationComplete}
-            {viewportSize}
-            {originalCode}
-            {editedCode}
-            {isGenerating}
-            {previewKey}
-            {previewContent}
-            {refreshPreview}
-            setViewportSize={(size) => (viewportSize = size)}
-          />
-        </Pane>
-      </PaneGroup>
-    </div>
+    {/if}
   </div>
 
   <!-- Save Dialog -->
@@ -385,6 +420,7 @@
         class="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white"
         onclick={() => {
           editedCode = originalCode;
+          flushPreview(originalCode);
           isEditable = false;
           showSaveDialog = false;
         }}

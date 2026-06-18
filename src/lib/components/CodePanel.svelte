@@ -73,7 +73,12 @@
         {#if generationComplete}
           <div class="ml-3 flex items-center space-x-2">
             <span class="text-xs text-gray-400">{isEditable ? 'Edit' : 'Read Only'}</span>
-            <Switch checked={isEditable} disabled={isGenerating} onCheckedChange={onToggle} />
+            <Switch
+              checked={isEditable}
+              disabled={isGenerating}
+              ariaLabel="Toggle edit mode"
+              onCheckedChange={onToggle}
+            />
           </div>
         {/if}
       </div>

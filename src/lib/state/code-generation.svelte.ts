@@ -26,6 +26,21 @@ export class CodeGeneration {
   thinkingOutput = $state("");
   isThinking = $state(false);
 
+  private abortController: AbortController | null = null;
+
+  abort() {
+    this.abortController?.abort();
+  }
+
+  reset() {
+    this.abort();
+    this.generatedCode = "";
+    this.isGenerating = false;
+    this.generationComplete = false;
+    this.thinkingOutput = "";
+    this.isThinking = false;
+  }
+
   async generateCode({
     prompt,
     model,
@@ -38,6 +53,11 @@ export class CodeGeneration {
       toast.error("Please enter a prompt and select a provider and model.");
       return;
     }
+
+    this.abortController?.abort();
+    const controller = new AbortController();
+    this.abortController = controller;
+    const { signal } = controller;
 
     this.isGenerating = true;
     this.generatedCode = "";
@@ -66,6 +86,7 @@ export class CodeGeneration {
           systemPromptType,
           customSystemPrompt: finalCustomSystemPrompt,
         }),
+        signal,
       });
 
       if (!response.ok) {
@@ -98,6 +119,11 @@ export class CodeGeneration {
       };
 
       while (true) {
+        if (signal.aborted) {
+          reader.cancel();
+          break;
+        }
+
         const { done, value } = await reader.read();
 
         if (done) {
@@ -134,15 +160,19 @@ export class CodeGeneration {
               reasoningChunks.push(part.content);
               reasoningUpdated = true;
             }
-          } catch (parseError) {
-            // If JSON parse fails, it might be legacy plain text format
-            console.warn("Failed to parse stream part:", line, parseError);
+          } catch {
+            // Legacy plain-text stream: treat raw line as content
+            if (this.isThinking) {
+              this.isThinking = false;
+            }
+            codeChunks.push(line);
+            codeUpdated = true;
           }
         }
 
         // Batch state updates once per reader.read() call
         if (codeUpdated) {
-          this.generatedCode = stripFences(codeChunks.join(""));
+          this.generatedCode = codeChunks.join("");
         }
         if (reasoningUpdated) {
           this.thinkingOutput = reasoningChunks.join("");
@@ -155,13 +185,13 @@ export class CodeGeneration {
           const part: StreamPart = JSON.parse(lineBuffer);
           if (part.type === "text") {
             codeChunks.push(part.content);
-            this.generatedCode = stripFences(codeChunks.join(""));
           } else if (part.type === "reasoning") {
             reasoningChunks.push(part.content);
             this.thinkingOutput = reasoningChunks.join("");
           }
         } catch {
-          // Ignore parse errors for incomplete lines
+          // Legacy plain-text stream: treat remaining buffer as content
+          codeChunks.push(lineBuffer);
         }
       }
 
@@ -170,8 +200,14 @@ export class CodeGeneration {
         this.isThinking = false;
       }
 
-      this.generationComplete = true;
+      if (!signal.aborted) {
+        this.generatedCode = stripFences(codeChunks.join(""));
+        this.generationComplete = true;
+      }
     } catch (error) {
+      if (signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+        return;
+      }
       console.error("Error generating code:", error);
       if (error instanceof Error) {
         const errorMessage = error.message;
@@ -194,7 +230,9 @@ export class CodeGeneration {
         toast.error("Error generating code. Please try again later.");
       }
     } finally {
-      this.isGenerating = false;
+      if (this.abortController === controller) {
+        this.isGenerating = false;
+      }
     }
   }
 }
